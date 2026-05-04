@@ -1,130 +1,163 @@
 import streamlit as st
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageEnhance
 import cv2
 import tempfile
+from reportlab.platypus import SimpleDocTemplate, Paragraph
+from reportlab.lib.styles import getSampleStyleSheet
+import requests
+import io
 
 st.set_page_config(page_title="TORNQUIST PRO MAX", layout="wide")
 
 st.title("TORNQUIST PRO MAX AI")
 
-# ABAS
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-    "📊 Dados",
-    "📸 Imagem",
-    "🎥 Vídeo",
-    "📄 Documento",
-    "🚗 Veículo",
-    "📑 Relatório"
-])
+st.markdown("### Sistema Pericial de Análise e Geração com IA")
 
 # ================= DADOS =================
-with tab1:
-    entrada = st.text_input("Valores (ex: 10,20,100)")
-    resultado_dados = None
+st.header("📊 Dados")
+entrada = st.text_input("Valores (ex: 10,20,100)")
 
-    if st.button("Analisar Dados"):
-        try:
-            v = np.array([float(x) for x in entrada.split(",")])
-            mu = np.mean(v)
-            D = np.mean(np.abs(v-mu))/(mu+1e-9)
+score_dados = 0
 
-            st.write("Média:", round(mu,2))
-            st.write("Desvio:", round(D,3))
+if st.button("Analisar Dados"):
+    try:
+        v = np.array([float(x) for x in entrada.split(",")])
+        mu = np.mean(v)
+        score_dados = np.mean(np.abs(v-mu))/(mu+1e-9)
 
-            resultado_dados = D
-
-            if D > 0.6:
-                st.error("ALTO RISCO")
-            elif D > 0.3:
-                st.warning("SUSPEITO")
-            else:
-                st.success("NORMAL")
-        except:
-            st.error("Erro nos dados")
+        st.write("Média:", round(mu,2))
+        st.write("Score:", round(score_dados,3))
+    except:
+        st.error("Erro nos dados")
 
 # ================= IMAGEM =================
-with tab2:
-    imagem = st.file_uploader("Enviar imagem", type=["jpg","png"])
-    resultado_img = None
+st.header("📸 Imagem")
 
-    if imagem:
-        img = Image.open(imagem)
+imagem = st.file_uploader("Enviar imagem", type=["jpg","png"])
+
+score_img = 0
+img_final = None
+
+if imagem:
+    img = Image.open(imagem)
+    st.image(img, caption="Original")
+
+    img_np = np.array(img)
+
+    for i in range(3):  # evolução iterativa
+        enhancer = ImageEnhance.Contrast(img)
+        img = enhancer.enhance(1.5)
         img_np = np.array(img)
 
-        edges = cv2.Canny(img_np,100,200)
-        I = np.mean(edges)/255
+    edges = cv2.Canny(img_np,100,200)
+    score_img = np.mean(edges)/255
 
-        st.image(edges, caption="Mapa de incoerência")
-        st.write("Score imagem:", round(I,3))
+    st.image(img, caption="Imagem evoluída")
+    st.image(edges, caption="Mapa incoerência")
 
-        resultado_img = I
+    img_final = img
 
 # ================= VIDEO =================
-with tab3:
-    video = st.file_uploader("Enviar vídeo", type=["mp4"])
-    resultado_vid = None
+st.header("🎥 Vídeo")
 
-    if video:
-        tfile = tempfile.NamedTemporaryFile(delete=False)
-        tfile.write(video.read())
+video = st.file_uploader("Enviar vídeo", type=["mp4"])
 
-        cap = cv2.VideoCapture(tfile.name)
-        prev = None
-        diffs = []
+score_vid = 0
 
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                break
+if video:
+    tfile = tempfile.NamedTemporaryFile(delete=False)
+    tfile.write(video.read())
 
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    cap = cv2.VideoCapture(tfile.name)
+    prev = None
+    diffs = []
 
-            if prev is not None:
-                diff = np.mean(np.abs(gray-prev))
-                diffs.append(diff)
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
 
-            prev = gray
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-        cap.release()
+        if prev is not None:
+            diffs.append(np.mean(np.abs(gray-prev)))
 
-        if diffs:
-            V = max(diffs)/255
-            st.write("Variação máxima:", round(V,3))
-            resultado_vid = V
+        prev = gray
 
-# ================= DOCUMENTO =================
-with tab4:
-    doc = st.file_uploader("Enviar documento", type=["jpg","png","pdf"])
-    if doc:
-        st.write("Documento recebido")
-        st.warning("Análise básica: verificar inconsistência visual/manual")
+    cap.release()
 
-# ================= VEÍCULO =================
-with tab5:
-    placa = st.text_input("Placa do veículo")
-    valor = st.text_input("Valor anunciado")
+    if diffs:
+        score_vid = max(diffs)/255
+        st.write("Frame crítico detectado")
 
-    if st.button("Analisar Veículo"):
-        st.write("Placa:", placa)
-        st.write("Valor:", valor)
-        st.warning("Comparar valor com média de mercado")
+# ================= IA GERAR IMAGEM =================
+st.header("🤖 Gerar Imagem com IA")
 
-# ================= RELATÓRIO =================
-with tab6:
-    st.subheader("Relatório Técnico")
+prompt = st.text_input("Descreva imagem (ex: carro futurista vermelho)")
 
-    st.write("""
-    Este sistema realiza análise de padrões com base em:
+if st.button("Gerar Imagem IA"):
+    try:
+        # EXEMPLO usando API externa (substituir chave)
+        response = requests.post(
+            "https://api.openai.com/v1/images/generations",
+            headers={"Authorization": "Bearer SUA_API_KEY"},
+            json={"prompt": prompt, "size": "512x512"}
+        )
+        data = response.json()
+        url = data['data'][0]['url']
+        st.image(url)
 
-    - Coerência estatística de dados
-    - Estrutura visual de imagem
-    - Variação de frames em vídeo
+    except:
+        st.error("Erro na geração (precisa API)")
 
-    RESULTADO:
-    - NORMAL: padrão esperado
-    - SUSPEITO: variação incomum
-    - ALTO RISCO: forte incoerência detectada
+# ================= SCORE FINAL =================
+score_total = (score_dados + score_img + score_vid)/3
 
-    OBS: Este sistema não afirma fraude, apenas indica anomalias.
-    """)
+st.header("📊 Resultado Final")
+
+st.write("Score:", round(score_total,3))
+
+if score_total > 0.6:
+    resultado = "ALTO RISCO"
+    st.error(resultado)
+elif score_total > 0.3:
+    resultado = "SUSPEITO"
+    st.warning(resultado)
+else:
+    resultado = "NORMAL"
+    st.success(resultado)
+
+# ================= RELATÓRIO PDF =================
+st.header("📄 Gerar Relatório")
+
+if st.button("Gerar PDF"):
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer)
+    styles = getSampleStyleSheet()
+
+    texto = f"""
+    RELATÓRIO TÉCNICO TORNQUIST
+
+    Score Dados: {round(score_dados,3)}
+    Score Imagem: {round(score_img,3)}
+    Score Vídeo: {round(score_vid,3)}
+
+    Score Final: {round(score_total,3)}
+
+    Classificação: {resultado}
+
+    Este relatório indica padrões fora do normal.
+    Não constitui prova definitiva de fraude.
+    """
+
+    story = [Paragraph(texto, styles["Normal"])]
+    doc.build(story)
+
+    st.download_button(
+        label="📥 Baixar Relatório PDF",
+        data=buffer.getvalue(),
+        file_name="relatorio_tornquist.pdf",
+        mime="application/pdf"
+    )
