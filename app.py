@@ -5,79 +5,65 @@ import requests
 import io
 import os
 
-# CONFIGURAÇÃO DE LIMITE DE UPLOAD (800MB) E LAYOUT
-st.set_page_config(
-    page_title="TORNQUIST EVOLUTION PRO", 
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+# 1. Aumentar limite de upload para 800MB (Configuração de Servidor)
+st.set_page_config(page_title="TORNQUIST EVOLUTION PRO", layout="wide")
 
-# Comando interno para aumentar o limite de bytes (800MB)
-# Nota: O Streamlit Cloud às vezes limita isso pelo servidor, 
-# mas este comando é o padrão para aplicações locais/servidores próprios.
+# Tenta configurar o limite de tamanho (apenas para execução local/custom)
 os.environ["STREAMLIT_SERVER_MAX_UPLOAD_SIZE"] = "800"
 
 st.title("🚀 TORNQUIST IMAGE EVOLUTION PRO")
 
-# --- CONEXÃO COM A IA ---
-# Tenta pegar dos Secrets, se não achar, avisa o usuário
-try:
-    client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
-except:
-    st.error("⚠️ Erro: Chave API não configurada nos Secrets do Streamlit!")
-    st.stop()
+# ============================================================
+# COLOQUE SUA CHAVE AQUI ENTRE AS ASPAS:
+# Exemplo: client = OpenAI(api_key="sk-12345...")
+# ============================================================
+client = OpenAI(api_key="COLE_AQUI_SUA_CHAVE_REAL_DA_OPENAI")
 
-# --- GERENCIAMENTO DE MEMÓRIA (SESSION STATE) ---
+# Gerenciamento de Memória (Session State)
 if 'current_image' not in st.session_state:
     st.session_state.current_image = None
-if 'history' not in st.session_state:
-    st.session_state.history = []
 
-# --- BARRA LATERAL (UPLOADS) ---
+# Barra Lateral
 with st.sidebar:
-    st.header("📂 Entrada de Arquivo")
+    st.header("📂 Entrada")
     uploaded_file = st.file_uploader("Enviar foto (Máx 800MB)", type=["png", "jpg", "jpeg"])
     
     if uploaded_file and st.session_state.current_image is None:
         img = Image.open(uploaded_file).convert("RGBA")
-        # Redimensiona se for muito grande para a API da OpenAI (máximo 4MB após processada)
-        if uploaded_file.size > 4 * 1024 * 1024:
-             img = img.resize((1024, 1024))
         st.session_state.current_image = img
         st.success("Imagem carregada!")
 
     if st.button("🗑️ Resetar Tudo"):
         st.session_state.current_image = None
-        st.session_state.history = []
         st.rerun()
 
-# --- ÁREA PRINCIPAL ---
-col1, col2 = st.columns([1, 1])
+# Área Principal
+col1, col2 = st.columns(2)
 
 with col1:
     st.subheader("🖼️ Imagem Atual")
     if st.session_state.current_image:
         st.image(st.session_state.current_image, use_container_width=True)
     else:
-        st.info("Aguardando upload de imagem...")
+        st.info("Aguardando upload...")
 
 with col2:
     st.subheader("🤖 Comando de Evolução")
-    instrucao = st.text_area("Descreva as melhorias ou adições:", 
-                            placeholder="Ex: Adicione uma iluminação cinematográfica, uma pessoa ao fundo e corrija falhas na textura.")
+    instrucao = st.text_area("O que a IA deve fazer na imagem?", 
+                            placeholder="Ex: Adicione uma pessoa de terno ao fundo e melhore a nitidez.")
 
     if st.button("✨ Evoluir Imagem"):
         if st.session_state.current_image and instrucao:
-            with st.spinner("A IA está analisando e recriando sua imagem..."):
+            with st.spinner("A IA está trabalhando..."):
                 try:
-                    # Converter imagem atual para Bytes (PNG)
+                    # Prepara a imagem para a API (Deve ser PNG < 4MB)
                     byte_io = io.BytesIO()
-                    # A API de Edição exige PNG e geralmente imagens quadradas
+                    # Redimensiona para o padrão da API (1024x1024)
                     temp_img = st.session_state.current_image.resize((1024, 1024))
                     temp_img.save(byte_io, format='PNG')
                     image_bytes = byte_io.getvalue()
 
-                    # Chamada para Edição (DALL-E 2 Edit)
+                    # Chama a Edição da OpenAI
                     response = client.images.edit(
                         image=image_bytes,
                         prompt=instrucao,
@@ -85,19 +71,15 @@ with col2:
                         size="1024x1024"
                     )
 
-                    # Atualizar Imagem na Sessão
+                    # Atualiza a imagem para a próxima rodada
                     new_url = response.data[0].url
                     new_img_data = requests.get(new_url).content
                     st.session_state.current_image = Image.open(io.BytesIO(new_img_data)).convert("RGBA")
                     
-                    st.success("Evolução concluída!")
+                    st.success("Pronto! Você pode pedir mais mudanças agora.")
                     st.rerun()
 
                 except Exception as e:
                     st.error(f"Erro na IA: {e}")
         else:
-            st.warning("Envie uma foto e escreva o que deseja mudar.")
-
-# --- RODAPÉ ---
-st.markdown("---")
-st.caption("TORNQUIST PRO MAX - Sistema de Evolução Iterativa via IA")
+            st.warning("Envie a foto e escreva o comando.")
