@@ -98,18 +98,18 @@ prompt = st.text_input("Descreva imagem (ex: carro futurista vermelho)")
 
 if st.button("Gerar Imagem IA"):
     try:
-        # EXEMPLO usando API externa (substituir chave)
+        # Pega a chave das configurações do Streamlit (Secrets)
+        api_key = st.secrets["OPENAI_API_KEY"]
         response = requests.post(
-            "https://api.openai.com/v1/images/generations",
-            headers={"Authorization": "Bearer SUA_API_KEY"},
+            "https://openai.com",
+            headers={"Authorization": f"Bearer {api_key}"},
             json={"prompt": prompt, "size": "512x512"}
         )
         data = response.json()
         url = data['data'][0]['url']
         st.image(url)
-
     except:
-        st.error("Erro na geração (precisa API)")
+        st.error("Erro na geração. Verifique a API Key nos Secrets do Streamlit.")
 
 # ================= SCORE FINAL =================
 score_total = (score_dados + score_img + score_vid)/3
@@ -118,6 +118,7 @@ st.header("📊 Resultado Final")
 
 st.write("Score:", round(score_total,3))
 
+resultado = "NORMAL"
 if score_total > 0.6:
     resultado = "ALTO RISCO"
     st.error(resultado)
@@ -125,31 +126,24 @@ elif score_total > 0.3:
     resultado = "SUSPEITO"
     st.warning(resultado)
 else:
-    resultado = "NORMAL"
     st.success(resultado)
 
 # ================= RELATÓRIO PDF =================
 st.header("📄 Gerar Relatório")
 
 if st.button("Gerar PDF"):
-
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer)
     styles = getSampleStyleSheet()
 
     texto = f"""
-    RELATÓRIO TÉCNICO TORNQUIST
-
-    Score Dados: {round(score_dados,3)}
-    Score Imagem: {round(score_img,3)}
-    Score Vídeo: {round(score_vid,3)}
-
-    Score Final: {round(score_total,3)}
-
-    Classificação: {resultado}
-
-    Este relatório indica padrões fora do normal.
-    Não constitui prova definitiva de fraude.
+    RELATÓRIO TÉCNICO TORNQUIST<br/><br/>
+    Score Dados: {round(score_dados,3)}<br/>
+    Score Imagem: {round(score_img,3)}<br/>
+    Score Vídeo: {round(score_vid,3)}<br/><br/>
+    <b>Score Final: {round(score_total,3)}</b><br/>
+    <b>Classificação: {resultado}</b><br/><br/>
+    Este relatório indica padrões fora do normal. Não constitui prova definitiva de fraude.
     """
 
     story = [Paragraph(texto, styles["Normal"])]
