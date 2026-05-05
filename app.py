@@ -3,42 +3,33 @@ from openai import OpenAI
 from PIL import Image, ImageDraw
 import requests
 from io import BytesIO
-from moviepy.editor import ImageClip, AudioFileClip
+from moviepy.editor import *
+import numpy as np
 
-# --- CONFIG ---
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
-st.set_page_config(page_title="Agência IA PRO", layout="centered")
-st.title("🔥 Criador de Propaganda Automática")
+st.set_page_config(page_title="Agência IA PRO+", layout="centered")
+st.title("🔥 Agência IA - Vídeo Profissional")
 
 ofertas = st.text_area("Digite produtos (ex: Cerveja R$ 3,99)")
 
-# --- BUSCAR IMAGEM (COM PROTEÇÃO) ---
-def buscar_imagem(produto):
+# --- IMAGEM ---
+def buscar_imagem():
     try:
-        url = f"https://source.unsplash.com/800x1200/?{produto}"
+        url = "https://picsum.photos/800/1200"
         r = requests.get(url, timeout=5)
-
         if r.status_code == 200:
             return Image.open(BytesIO(r.content)).convert("RGB")
     except:
         pass
-
-    # fallback (imagem padrão)
-    img = Image.new("RGB", (800,1200), color=(30,30,30))
-    draw = ImageDraw.Draw(img)
-    draw.text((50,500), produto.upper(), fill="white")
-    return img
+    return Image.new("RGB", (800,1200), (20,20,20))
 
 # --- TEXTO IA ---
 def gerar_texto(produto, preco):
     prompt = f"""
-    Crie um anúncio extremamente chamativo estilo mercado brasileiro.
-
+    Crie anúncio curto estilo locutor brasileiro:
     Produto: {produto}
     Preço: {preco}
-
-    Use urgência, emoção e chamada para ação.
     """
     r = client.chat.completions.create(
         model="gpt-4o-mini",
@@ -48,19 +39,18 @@ def gerar_texto(produto, preco):
 
 # --- BANNER ---
 def criar_banner(produto, preco):
-    img = buscar_imagem(produto)
-    img = img.resize((800,1200))
+    img = buscar_imagem().resize((800,1200))
 
-    overlay = Image.new("RGBA", img.size, (0,0,0,150))
+    overlay = Image.new("RGBA", img.size, (0,0,0,140))
     img = Image.alpha_composite(img.convert("RGBA"), overlay)
 
     draw = ImageDraw.Draw(img)
 
-    draw.text((40,50), "🔥 OFERTA DO DIA", fill="white")
-    draw.text((40,200), produto.upper(), fill="white")
+    draw.text((50,50), "🔥 OFERTA DO DIA", fill="white")
+    draw.text((50,350), produto.upper(), fill="white")
 
-    draw.rectangle((40,500,500,650), fill=(255,200,0))
-    draw.text((60,540), preco, fill="black")
+    draw.rectangle((50,650,500,800), fill=(255,200,0))
+    draw.text((70,700), preco, fill="black")
 
     nome = f"{produto}.png"
     img.convert("RGB").save(nome)
@@ -76,15 +66,27 @@ def gerar_audio(texto, nome):
     with open(nome, "wb") as f:
         f.write(audio.read())
 
-# --- VIDEO ---
-def gerar_video(imagem, audio, nome):
-    clip = ImageClip(imagem).set_duration(10)
-    audio_clip = AudioFileClip(audio)
-    video = clip.set_audio(audio_clip)
-    video.write_videofile(nome, fps=24)
+# --- VIDEO ANIMADO ---
+def gerar_video_animado(img_path, audio_path, output):
+
+    base = ImageClip(img_path).resize(height=1280)
+
+    # zoom leve
+    zoom = base.fx(vfx.resize, lambda t: 1 + 0.05*t)
+
+    # leve movimento lateral
+    move = zoom.set_position(lambda t: ('center', int(-20*t)))
+
+    # fade
+    clip = move.set_duration(10).fadein(1).fadeout(1)
+
+    audio = AudioFileClip(audio_path)
+    video = clip.set_audio(audio)
+
+    video.write_videofile(output, fps=24)
 
 # --- EXEC ---
-if st.button("🚀 GERAR PROPAGANDA"):
+if st.button("🚀 GERAR PROPAGANDA PRO"):
 
     for linha in ofertas.split("\n"):
         if "R$" in linha:
@@ -92,17 +94,31 @@ if st.button("🚀 GERAR PROPAGANDA"):
             produto = linha.split("R$")[0].strip()
             preco = "R$" + linha.split("R$")[1].strip()
 
+            st.markdown("---")
+            st.subheader(f"📦 {produto}")
+
             texto = gerar_texto(produto, preco)
             banner = criar_banner(produto, preco)
 
             audio_nome = f"{produto}.mp3"
             gerar_audio(texto, audio_nome)
 
-            video_nome = f"{produto}.mp4"
-            gerar_video(banner, audio_nome, video_nome)
+            video_nome = f"{produto}_animado.mp4"
+            gerar_video_animado(banner, audio_nome, video_nome)
 
+            # MOSTRAR
             st.image(banner)
             st.video(video_nome)
-            st.write(texto)
+            st.text_area("📲 Texto pronto", texto)
 
-    st.success("🔥 Propaganda pronta!")
+            # DOWNLOADS
+            with open(banner, "rb") as f:
+                st.download_button("📥 Baixar Banner", f, file_name=banner)
+
+            with open(audio_nome, "rb") as f:
+                st.download_button("🎧 Baixar Áudio", f, file_name=audio_nome)
+
+            with open(video_nome, "rb") as f:
+                st.download_button("🎬 Baixar Vídeo Animado", f, file_name=video_nome)
+
+    st.success("🔥 Propaganda profissional pronta!")
