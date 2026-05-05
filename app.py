@@ -3,9 +3,13 @@ from openai import OpenAI
 from PIL import Image, ImageDraw
 import requests
 from io import BytesIO
-from moviepy.editor import *
-import numpy as np
+from moviepy.editor import ImageClip, AudioFileClip, vfx
 
+# 🔥 CORREÇÃO MOVIEPY + PILLOW
+if not hasattr(Image, "ANTIALIAS"):
+    Image.ANTIALIAS = Image.Resampling.LANCZOS
+
+# --- CONFIG ---
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
 st.set_page_config(page_title="Agência IA PRO+", layout="centered")
@@ -13,7 +17,7 @@ st.title("🔥 Agência IA - Vídeo Profissional")
 
 ofertas = st.text_area("Digite produtos (ex: Cerveja R$ 3,99)")
 
-# --- IMAGEM ---
+# --- BUSCAR IMAGEM ---
 def buscar_imagem():
     try:
         url = "https://picsum.photos/800/1200"
@@ -22,12 +26,13 @@ def buscar_imagem():
             return Image.open(BytesIO(r.content)).convert("RGB")
     except:
         pass
+
     return Image.new("RGB", (800,1200), (20,20,20))
 
 # --- TEXTO IA ---
 def gerar_texto(produto, preco):
     prompt = f"""
-    Crie anúncio curto estilo locutor brasileiro:
+    Crie anúncio curto estilo locutor brasileiro.
     Produto: {produto}
     Preço: {preco}
     """
@@ -66,19 +71,16 @@ def gerar_audio(texto, nome):
     with open(nome, "wb") as f:
         f.write(audio.read())
 
-# --- VIDEO ANIMADO ---
+# --- VIDEO ANIMADO (ESTÁVEL) ---
 def gerar_video_animado(img_path, audio_path, output):
 
-    base = ImageClip(img_path).resize(height=1280)
+    clip = ImageClip(img_path).set_duration(10)
 
     # zoom leve
-    zoom = base.fx(vfx.resize, lambda t: 1 + 0.05*t)
+    clip = clip.fx(vfx.resize, lambda t: 1 + 0.03*t)
 
-    # leve movimento lateral
-    move = zoom.set_position(lambda t: ('center', int(-20*t)))
-
-    # fade
-    clip = move.set_duration(10).fadein(1).fadeout(1)
+    # fade suave
+    clip = clip.fadein(1).fadeout(1)
 
     audio = AudioFileClip(audio_path)
     video = clip.set_audio(audio)
