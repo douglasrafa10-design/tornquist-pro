@@ -1,75 +1,88 @@
 import streamlit as st
-import feedparser
 from openai import OpenAI
-from supabase import create_client
-import datetime
+from PIL import Image, ImageDraw
+import requests
+from io import BytesIO
+from moviepy.editor import ImageClip, AudioFileClip
 
-# --- CONFIGURAÇÃO DE ACESSO ---
-# As chaves ficam escondidas nos 'Secrets' do Streamlit
-try:
-    client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
-    supabase = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
-except:
-    st.error("Configure as chaves OPENAI_API_KEY, SUPABASE_URL e SUPABASE_KEY nos Secrets!")
+client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
-# --- FONTES DE ALIMENTAÇÃO AUTOMÁTICA (Rádios e Portais) ---
-RSS_FEEDS = [
-    "https://globo.com", # Notícias Gerais
-    "https://bbc.com", # Global
-    "https://jovempan.com.br" # Rádio/Notícias Rápidas
-]
+st.set_page_config(page_title="Agência IA PRO", layout="centered")
+st.title("🔥 Criador de Propaganda Automática")
 
-def coletar_noticias_mundo():
-    """Lê as notícias mais recentes das fontes automáticas"""
-    dados_coletados = ""
-    for url in RSS_FEEDS:
-        feed = feedparser.parse(url)
-        for entry in feed.entries[:3]: # Pega as 3 principais de cada fonte
-            dados_coletados += f"- {entry.title}: {entry.description}\n"
-    return dados_coletados
+ofertas = st.text_area("Digite produtos (ex: Cerveja R$ 3,99)")
 
-def gerar_caderno_imperio(noticias_web):
+def buscar_imagem(produto):
+    url = f"https://source.unsplash.com/800x1200/?{produto}"
+    r = requests.get(url)
+    return Image.open(BytesIO(r.content)).convert("RGB")
+
+def gerar_texto(produto, preco):
     prompt = f"""
-    Você é a Inteligência Central do Império Regional. 
-    DADOS CAPTADOS DA WEB/RÁDIOS AGORA:
-    {noticias_web}
+    Crie anúncio extremamente chamativo estilo mercado brasileiro.
 
-    SUA MISSÃO: Criar o 'Caderno Matinal' de hoje.
-    REGRAS:
-    1. Una as notícias globais com o bem-estar regional.
-    2. Crie uma 'História Programada' baseada na evolução (DNA).
-    3. Defina a Frequência Vibracional do dia (400Hz a 1000Hz).
-    4. Estilo: Profissional, Imperial e Motivador.
+    Produto: {produto}
+    Preço: {preco}
     """
-    
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[{"role": "system", "content": "Você é o Editor do Império."},
-                  {"role": "user", "content": prompt}]
+    r = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role":"user","content":prompt}]
     )
-    return response.choices[0].message.content
+    return r.choices[0].message.content
 
-# --- INTERFACE ---
-st.set_page_config(page_title="IMPÉRIO IA - SISTEMA ATIVO", layout="wide")
-st.title("🏙️ IMPÉRIO IA: CADERNO MATINAL AUTOMÁTICO")
+def criar_banner(produto, preco):
+    img = buscar_imagem(produto)
+    img = img.resize((800,1200))
 
-if st.sidebar.button("🛰️ Sincronizar com Rádios e Web"):
-    with st.spinner("IA Escaneando o Planeta..."):
-        noticias_atuais = coletar_noticias_mundo()
-        caderno_final = gerar_caderno_imperio(noticias_atuais)
-        
-        st.markdown("---")
-        st.markdown(caderno_final)
-        
-        # Salva no Banco de Dados (Memória do Império)
-        supabase.table("historico_caderno").insert({
-            "conteudo": caderno_final,
-            "data": str(datetime.date.today())
-        }).execute()
-        st.success("Caderno gerado e arquivado com sucesso!")
+    overlay = Image.new("RGBA", img.size, (0,0,0,150))
+    img = Image.alpha_composite(img.convert("RGBA"), overlay)
 
-# Exibir Histórico (O que o sistema já aprendeu)
-if st.sidebar.checkbox("📚 Ver Memória do Império"):
-    historico = supabase.table("historico_caderno").select("*").order("created_at", desc=True).execute()
-    for item in historico.data:
-        st.write(f"📅 **{item['data']}**: {item['conteudo'][:200]}...")
+    draw = ImageDraw.Draw(img)
+
+    draw.text((40,50), "🔥 OFERTA DO DIA", fill="white")
+    draw.text((40,200), produto.upper(), fill="white")
+
+    draw.rectangle((40,500,500,650), fill=(255,200,0))
+    draw.text((60,540), preco, fill="black")
+
+    nome = f"{produto}.png"
+    img.convert("RGB").save(nome)
+    return nome
+
+def gerar_audio(texto, nome):
+    audio = client.audio.speech.create(
+        model="gpt-4o-mini-tts",
+        voice="alloy",
+        input=texto
+    )
+    with open(nome, "wb") as f:
+        f.write(audio.read())
+
+def gerar_video(img, audio, nome):
+    clip = ImageClip(img).set_duration(10)
+    audio_clip = AudioFileClip(audio)
+    video = clip.set_audio(audio_clip)
+    video.write_videofile(nome, fps=24)
+
+if st.button("🚀 GERAR PROPAGANDA"):
+
+    for linha in ofertas.split("\n"):
+        if "R$" in linha:
+
+            produto = linha.split("R$")[0].strip()
+            preco = "R$" + linha.split("R$")[1].strip()
+
+            texto = gerar_texto(produto, preco)
+            banner = criar_banner(produto, preco)
+
+            audio_nome = f"{produto}.mp3"
+            gerar_audio(texto, audio_nome)
+
+            video_nome = f"{produto}.mp4"
+            gerar_video(banner, audio_nome, video_nome)
+
+            st.image(banner)
+            st.video(video_nome)
+            st.write(texto)
+
+    st.success("🔥 Tudo pronto!")
