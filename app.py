@@ -5,6 +5,7 @@ import requests
 from io import BytesIO
 from moviepy.editor import ImageClip, AudioFileClip
 
+# --- CONFIG ---
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
 st.set_page_config(page_title="Agência IA PRO", layout="centered")
@@ -12,17 +13,32 @@ st.title("🔥 Criador de Propaganda Automática")
 
 ofertas = st.text_area("Digite produtos (ex: Cerveja R$ 3,99)")
 
+# --- BUSCAR IMAGEM (COM PROTEÇÃO) ---
 def buscar_imagem(produto):
-    url = f"https://source.unsplash.com/800x1200/?{produto}"
-    r = requests.get(url)
-    return Image.open(BytesIO(r.content)).convert("RGB")
+    try:
+        url = f"https://source.unsplash.com/800x1200/?{produto}"
+        r = requests.get(url, timeout=5)
 
+        if r.status_code == 200:
+            return Image.open(BytesIO(r.content)).convert("RGB")
+    except:
+        pass
+
+    # fallback (imagem padrão)
+    img = Image.new("RGB", (800,1200), color=(30,30,30))
+    draw = ImageDraw.Draw(img)
+    draw.text((50,500), produto.upper(), fill="white")
+    return img
+
+# --- TEXTO IA ---
 def gerar_texto(produto, preco):
     prompt = f"""
-    Crie anúncio extremamente chamativo estilo mercado brasileiro.
+    Crie um anúncio extremamente chamativo estilo mercado brasileiro.
 
     Produto: {produto}
     Preço: {preco}
+
+    Use urgência, emoção e chamada para ação.
     """
     r = client.chat.completions.create(
         model="gpt-4o-mini",
@@ -30,6 +46,7 @@ def gerar_texto(produto, preco):
     )
     return r.choices[0].message.content
 
+# --- BANNER ---
 def criar_banner(produto, preco):
     img = buscar_imagem(produto)
     img = img.resize((800,1200))
@@ -49,6 +66,7 @@ def criar_banner(produto, preco):
     img.convert("RGB").save(nome)
     return nome
 
+# --- AUDIO ---
 def gerar_audio(texto, nome):
     audio = client.audio.speech.create(
         model="gpt-4o-mini-tts",
@@ -58,12 +76,14 @@ def gerar_audio(texto, nome):
     with open(nome, "wb") as f:
         f.write(audio.read())
 
-def gerar_video(img, audio, nome):
-    clip = ImageClip(img).set_duration(10)
+# --- VIDEO ---
+def gerar_video(imagem, audio, nome):
+    clip = ImageClip(imagem).set_duration(10)
     audio_clip = AudioFileClip(audio)
     video = clip.set_audio(audio_clip)
     video.write_videofile(nome, fps=24)
 
+# --- EXEC ---
 if st.button("🚀 GERAR PROPAGANDA"):
 
     for linha in ofertas.split("\n"):
@@ -85,4 +105,4 @@ if st.button("🚀 GERAR PROPAGANDA"):
             st.video(video_nome)
             st.write(texto)
 
-    st.success("🔥 Tudo pronto!")
+    st.success("🔥 Propaganda pronta!")
