@@ -1,7 +1,5 @@
 streamlit
 openai
-numpy
-Pillow
-opencv-python-headless
-reportlab
+supabase
+feedparser
 requests
